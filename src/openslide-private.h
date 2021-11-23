@@ -370,8 +370,8 @@ void openslide_cancel_prefetch_hint(openslide_t *osr, int prefetch_id);
 #define TIFFSetDirectory _OPENSLIDE_POISON(_openslide_tiff_set_dir)
 
 #ifdef HAVE_GDAL
-#include <cpl_vsi.h>
-#include <cpl_error.h>
+#include <gdal/cpl_vsi.h>
+#include <gdal/cpl_error.h>
 #else
 typedef unsigned long long vsi_l_offset;
 typedef FILE VSILFILE;

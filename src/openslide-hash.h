@@ -31,7 +31,7 @@
 #include <tiffio.h>
 #include <glib.h>
 #ifdef HAVE_GDAL
-#include <cpl_vsi.h>
+#include <gdal/cpl_vsi.h>
 #else
 typedef FILE VSILFILE;
 #endif
