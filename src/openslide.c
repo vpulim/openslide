@@ -158,6 +158,7 @@ static bool open_backend(openslide_t *osr,
 
   // check for error-handling bugs in open function
   if (!result && err && !*err) {
+    g_message("!result && err");
     g_warning("%s opener failed without setting error", format->name);
     // assume the worst
     g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
