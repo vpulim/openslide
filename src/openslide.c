@@ -725,5 +725,10 @@ void openslide_read_associated_image(openslide_t *osr,
 }
 
 const char *openslide_get_version(void) {
-  return SUFFIXED_VERSION;
+#ifdef HAVE_GDAL
+    return "HAVE GDAL";
+#else
+    return "NO HAVE GDAL";
+#endif
+//  return SUFFIXED_VERSION;
 }
