@@ -148,9 +148,13 @@ static bool open_backend(openslide_t *osr,
     *quickhash1_OUT = _openslide_hash_quickhash1_create();
   }
 
+  g_message("format->open: %s", filename);
+
   bool result = format->open(osr, filename, tl,
                              quickhash1_OUT ? *quickhash1_OUT : NULL,
                              err);
+
+  g_message("result: %d", result);
 
   // check for error-handling bugs in open function
   if (!result && err && !*err) {
@@ -163,6 +167,8 @@ static bool open_backend(openslide_t *osr,
     g_warning("%s opener succeeded but set error", format->name);
     result = false;
   }
+
+  g_message("result OK");
 
   // if we have a hash and a false result, destroy
   if (quickhash1_OUT && !result) {
