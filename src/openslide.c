@@ -251,6 +251,7 @@ openslide_t *openslide_open(const char *filename) {
     // not a slide file
     return NULL;
   }
+  g_warning("format: %s %s", format->name, format->vendor);
 
   // alloc memory
   openslide_t *osr = create_osr();
