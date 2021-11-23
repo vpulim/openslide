@@ -563,6 +563,10 @@ struct _openslide_tifflike *_openslide_tifflike_create(const char *filename,
     _openslide_io_error(err, "[2] Couldn't open %s", filename);
   }
 #else
+  g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
+                "BOO YAH TIFF: %s", filename)
+  _openslide_io_error(err, "BOO YAH");
+
   VSILFILE *f = _openslide_fopen(filename, "rb", err); 
 #endif
   if (!f) {

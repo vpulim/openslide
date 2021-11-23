@@ -535,6 +535,9 @@ static TIFF *tiff_open(struct _openslide_tiffcache *tc, GError **err) {
     _openslide_io_error(err, "Couldn't open %s; errno: %d; errmsg: %s", tc->filename, CPLGetLastErrorNo(), CPLGetLastErrorMsg());
   }
 #else
+  g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
+                "BOO YAH TIFF: %s", tc->filename)
+  _openslide_io_error(err, "BOO YAH");
   VSILFILE *fp = _openslide_fopen(tc->filename, "rb", err);
 #endif
   if (fp == NULL) {
