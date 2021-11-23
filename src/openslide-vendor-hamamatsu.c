@@ -2233,9 +2233,21 @@ static bool hamamatsu_ndpi_open(openslide_t *osr, const char *filename,
   bool success = false;
   bool restart_marker_scan = false;
 
+  g_warning("NDPI OPEN: %s", filename);
+
   // open file
-  FILE *f = _openslide_fopen(filename, "rb", err);
+#ifdef HAVE_GDAL
+  g_warning("NDPI BAFAFOPEN: %s", filename);
+  VSILFILE *f = VSIFOpenL( filename, "rb");
+  g_warning("NDPI BAFAFOPEN: %s", filename);
+  if (f == NULL) {
+    // _openslide_io_error(err, "Couldn't open %s", filename);
+  }
+#else  
+  VSILFILE *f = _openslide_fopen(filename, "rb", err);
+#endif
   if (!f) {
+    g_warning("NDPI FAIL");
     goto FAIL;
   }
 
