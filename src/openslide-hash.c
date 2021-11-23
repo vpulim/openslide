@@ -71,7 +71,7 @@ bool _openslide_hash_file_part(struct _openslide_hash *hash,
 #ifdef HAVE_GDAL
     VSILFILE *f = VSIFOpenL( filename, "rb");
     if (f == NULL) {
-      _openslide_io_error(err, "Couldn't open %s", filename);
+      _openslide_io_error(err, "[1] Couldn't open %s", filename);
     }
 #else
     VSILFILE *f = _openslide_fopen(filename, "rb", err); 

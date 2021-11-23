@@ -560,7 +560,7 @@ struct _openslide_tifflike *_openslide_tifflike_create(const char *filename,
 #ifdef HAVE_GDAL
   VSILFILE *f = VSIFOpenL( filename, "rb");
   if (f == NULL) {
-    _openslide_io_error(err, "Couldn't open %s", filename);
+    _openslide_io_error(err, "[2] Couldn't open %s", filename);
   }
 #else
   VSILFILE *f = _openslide_fopen(filename, "rb", err); 

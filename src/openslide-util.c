@@ -164,7 +164,7 @@ FILE *_openslide_fopen(const char *path, const char *mode, GError **err)
   g_free(m);
 
   if (f == NULL) {
-    _openslide_io_error(err, "Couldn't open %s", path);
+    _openslide_io_error(err, "[0] Couldn't open %s", path);
     return NULL;
   }
 
