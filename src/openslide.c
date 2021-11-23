@@ -235,10 +235,12 @@ openslide_t *openslide_open(const char *filename) {
 
   g_assert(openslide_was_dynamically_loaded);
 
-  // detect format
+   // detect format
+  g_warning("detect format");
   struct _openslide_tifflike *tl;
   const struct _openslide_format *format = detect_format(filename, &tl);
   if (!format) {
+    g_warning("!format");
     // not a slide file
     return NULL;
   }
@@ -248,11 +250,13 @@ openslide_t *openslide_open(const char *filename) {
 
   // open backend
   struct _openslide_hash *quickhash1 = NULL;
+  g_warning("open backend");
   bool success = open_backend(osr, format, filename, tl, &quickhash1,
                               &tmp_err);
   _openslide_tifflike_destroy(tl);
   if (!success) {
     // failed to read slide
+    g_warning("!success");
     _openslide_propagate_error(osr, tmp_err);
     return osr;
   }
