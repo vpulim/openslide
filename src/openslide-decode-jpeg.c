@@ -252,7 +252,7 @@ void _openslide_jpeg_decompress_destroy(struct _openslide_jpeg_decompress *dc) {
   g_slice_free(struct _openslide_jpeg_decompress, dc);
 }
 
-static bool jpeg_get_dimensions(FILE *f,  // or:
+static bool jpeg_get_dimensions(VSILFILE *fp,  // or:
                                 const void *buf, uint32_t buflen,
                                 int32_t *w, int32_t *h,
                                 GError **err) {
@@ -266,8 +266,8 @@ static bool jpeg_get_dimensions(FILE *f,  // or:
   if (setjmp(env) == 0) {
     _openslide_jpeg_decompress_init(dc, &env);
 
-    if (f) {
-      _openslide_jpeg_stdio_src(cinfo, f);
+    if (fp) {
+      _openslide_jpeg_stdio_src(cinfo, fp);
     } else {
       _openslide_jpeg_mem_src(cinfo, (void *) buf, buflen);
     }
@@ -299,19 +299,19 @@ bool _openslide_jpeg_read_dimensions(const char *filename,
                                      int64_t offset,
                                      int32_t *w, int32_t *h,
                                      GError **err) {
-  FILE *f = _openslide_fopen(filename, "rb", err);
-  if (f == NULL) {
+  VSILFILE *fp = VSIFOpenL(filename, "rb");
+  if (fp == NULL) {
     return false;
   }
-  if (offset && fseeko(f, offset, SEEK_SET) == -1) {
+  if (offset && VSIFSeekL(fp, offset, SEEK_SET) == -1) {
     _openslide_io_error(err, "Cannot seek to offset");
-    fclose(f);
+    VSIFCloseL(fp);
     return false;
   }
 
-  bool success = jpeg_get_dimensions(f, NULL, 0, w, h, err);
+  bool success = jpeg_get_dimensions(fp, NULL, 0, w, h, err);
 
-  fclose(f);
+  VSIFCloseL(fp);
   return success;
 }
 

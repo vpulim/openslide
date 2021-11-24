@@ -173,7 +173,7 @@ static GQuark _openslide_hamamatsu_error_quark(void) {
  * as a complete JPEG.  Originally based on jdatasrc.c from IJG libjpeg.
  */
 static bool jpeg_random_access_src(j_decompress_ptr cinfo,
-                                   FILE *infile,
+                                   VSILFILE *infile,
                                    int64_t header_start_position,
                                    int64_t sof_position,
                                    int64_t header_stop_position,
@@ -212,11 +212,11 @@ static bool jpeg_random_access_src(j_decompress_ptr cinfo,
 
   // read in the 2 parts
   //  g_debug("reading header from %"PRId64, header_start_position);
-  if (fseeko(infile, header_start_position, SEEK_SET)) {
+  if (VSIFSeekL(infile, header_start_position, SEEK_SET)) {
     _openslide_io_error(err, "Couldn't seek to header start");
     return false;
   }
-  if (!fread(buffer, header_length, 1, infile)) {
+  if (!VSIFReadL(buffer, header_length, 1, infile)) {
     g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
                 "Cannot read header in JPEG at %"PRId64,
                 header_start_position);
@@ -225,11 +225,11 @@ static bool jpeg_random_access_src(j_decompress_ptr cinfo,
 
   if (data_length) {
     //  g_debug("reading from %"PRId64, start_position);
-    if (fseeko(infile, start_position, SEEK_SET)) {
+    if (VSIFSeekL(infile, start_position, SEEK_SET)) {
       _openslide_io_error(err, "Couldn't seek to data start");
       return false;
     }
-    if (!fread(buffer + header_length, data_length, 1, infile)) {
+    if (!VSIFReadL(buffer + header_length, data_length, 1, infile)) {
       g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
                   "Cannot read data in JPEG at %"PRId64, start_position);
       return false;
@@ -300,7 +300,7 @@ static void jpeg_destroy_data(int32_t num_jpegs, struct jpeg **jpegs,
   g_free(levels);
 }
 
-static bool find_bitstream_start(FILE *f,
+static bool find_bitstream_start(VSILFILE *fp,
                                  int64_t *sof_position,
                                  int64_t *header_stop_position,
                                  GError **err) {
@@ -312,8 +312,8 @@ static bool find_bitstream_start(FILE *f,
 
   while (true) {
     // read marker
-    pos = ftello(f);
-    if (fread(buf, sizeof(buf), 1, f) != 1) {
+    pos = VSIFTellL(fp);
+    if (VSIFReadL(buf, sizeof(buf), 1, fp) != 1) {
       g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
                   "Couldn't read JPEG marker at %"PRId64, pos);
       return false;
@@ -339,7 +339,7 @@ static bool find_bitstream_start(FILE *f,
     }
 
     // read length
-    if (fread(buf, sizeof(buf), 1, f) != 1) {
+    if (VSIFReadL(buf, sizeof(buf), 1, fp) != 1) {
       g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
                   "Couldn't read JPEG marker length at %"PRId64, pos);
       return false;
@@ -348,7 +348,7 @@ static bool find_bitstream_start(FILE *f,
     len = GUINT16_FROM_BE(len);
 
     // seek
-    if (fseeko(f, pos + sizeof(buf) + len, SEEK_SET)) {
+    if (VSIFSeekL(fp, pos + sizeof(buf) + len, SEEK_SET)) {
       _openslide_io_error(err, "Couldn't seek to next marker");
       return false;
     }
@@ -356,7 +356,7 @@ static bool find_bitstream_start(FILE *f,
     // check for SOS
     if (marker_byte == 0xDA) {
       // found it; done
-      *header_stop_position = ftello(f);
+      *header_stop_position = VSIFTellL(fp);
       //g_debug("found bitstream start at %"PRId64, *header_stop_position);
       break;
     }
@@ -371,7 +371,7 @@ static bool find_bitstream_start(FILE *f,
   return true;
 }
 
-static bool find_next_ff_marker(FILE *f,
+static bool find_next_ff_marker(VSILFILE *fp,
                                 uint8_t *buf_start,
                                 uint8_t **buf,
                                 int buf_size,
@@ -381,7 +381,7 @@ static bool find_next_ff_marker(FILE *f,
                                 int *bytes_in_buf,
                                 GError **err) {
   //g_debug("bytes_in_buf: %d", *bytes_in_buf);
-  int64_t file_pos = ftello(f);
+  int64_t file_pos = VSIFTellL(fp);
   bool last_was_ff = false;
   while (true) {
     if (*bytes_in_buf == 0) {
@@ -390,7 +390,7 @@ static bool find_next_ff_marker(FILE *f,
       int bytes_to_read = MIN(buf_size, file_size - file_pos);
 
       //g_debug("bytes_to_read: %d", bytes_to_read);
-      size_t result = fread(*buf, bytes_to_read, 1, f);
+      size_t result = VSIFReadL(*buf, bytes_to_read, 1, fp);
       if (result == 0) {
         g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
                     "Short read searching for JPEG marker at %"PRId64,
@@ -438,7 +438,7 @@ static bool find_next_ff_marker(FILE *f,
 }
 
 static bool _compute_mcu_start(struct jpeg *jpeg,
-			       FILE *f,
+			       VSILFILE *fp,
 			       int64_t target,
 			       GError **err) {
   // special case for first
@@ -456,13 +456,13 @@ static bool _compute_mcu_start(struct jpeg *jpeg,
     }
     if (offset != -1) {
       uint8_t buf[2];
-      if (fseeko(f, offset - 2, SEEK_SET)) {
+      if (VSIFSeekL(fp, offset - 2, SEEK_SET)) {
         _openslide_io_error(err, "Couldn't seek to recorded restart "
                             "marker at %"PRId64, offset - 2);
         return false;
       }
 
-      size_t result = fread(buf, 2, 1, f);
+      size_t result = VSIFReadL(buf, 2, 1, fp);
       if (result == 0 ||
           buf[0] != 0xFF || buf[1] < 0xD0 || buf[1] > 0xD7) {
         g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
@@ -484,7 +484,7 @@ static bool _compute_mcu_start(struct jpeg *jpeg,
   //  g_debug("target: %"PRId64", first_good: %"PRId64, target, first_good);
 
   // now search for the new restart markers
-  if (fseeko(f, jpeg->mcu_starts[first_good], SEEK_SET)) {
+  if (VSIFSeekL(fp, jpeg->mcu_starts[first_good], SEEK_SET)) {
     _openslide_io_error(err, "Couldn't seek to first good restart marker");
     return false;
   }
@@ -495,7 +495,7 @@ static bool _compute_mcu_start(struct jpeg *jpeg,
   while (first_good < target) {
     uint8_t marker_byte;
     int64_t after_marker_pos;
-    if (!find_next_ff_marker(f, buf_start, &buf, 4096,
+    if (!find_next_ff_marker(fp, buf_start, &buf, 4096,
                              jpeg->end_in_file,
                              &marker_byte,
                              &after_marker_pos,
@@ -516,7 +516,7 @@ static bool _compute_mcu_start(struct jpeg *jpeg,
 
 static bool compute_mcu_start(openslide_t *osr,
 			      struct jpeg *jpeg,
-			      FILE *f,
+			      VSILFILE *fp,
 			      int64_t tileno,
 			      int64_t *start_position,
 			      int64_t *stop_position,
@@ -532,7 +532,7 @@ static bool compute_mcu_start(openslide_t *osr,
 
   g_mutex_lock(data->restart_marker_mutex);
 
-  if (!_compute_mcu_start(jpeg, f, tileno, err)) {
+  if (!_compute_mcu_start(jpeg, fp, tileno, err)) {
     goto OUT;
   }
 
@@ -548,7 +548,7 @@ static bool compute_mcu_start(openslide_t *osr,
       // EOF
       *stop_position = jpeg->end_in_file;
     } else {
-      if (!_compute_mcu_start(jpeg, f, tileno + 1, err)) {
+      if (!_compute_mcu_start(jpeg, fp, tileno + 1, err)) {
         goto OUT;
       }
       *stop_position = jpeg->mcu_starts[tileno + 1];
@@ -567,14 +567,14 @@ OUT:
 // clobber warnings in read_from_jpeg() on gcc 4.9
 static bool compute_mcu_start_volatile(openslide_t *osr,
                                        struct jpeg *jpeg,
-                                       FILE *f,
+                                       VSILFILE *fp,
                                        int64_t tileno,
                                        volatile int64_t *start_position,
                                        volatile int64_t *stop_position,
                                        GError **err) {
   int64_t start;
   int64_t stop;
-  if (!compute_mcu_start(osr, jpeg, f, tileno, &start, &stop, err)) {
+  if (!compute_mcu_start(osr, jpeg, fp, tileno, &start, &stop, err)) {
     return false;
   }
   *start_position = start;
@@ -592,8 +592,8 @@ static bool read_from_jpeg(openslide_t *osr,
   volatile bool success = false;
 
   // open file
-  FILE *f = _openslide_fopen(jpeg->filename, "rb", err);
-  if (f == NULL) {
+  VSILFILE *fp = VSIFOpenL(jpeg->filename, "rb");
+  if (fp == NULL) {
     return false;
   }
 
@@ -607,7 +607,7 @@ static bool read_from_jpeg(openslide_t *osr,
   // volatile to avoid spurious longjmp clobber warnings
   volatile int64_t start_position;
   volatile int64_t stop_position;
-  if (!compute_mcu_start_volatile(osr, jpeg, f, tileno,
+  if (!compute_mcu_start_volatile(osr, jpeg, fp, tileno,
                                   &start_position,
                                   &stop_position,
                                   err)) {
@@ -618,7 +618,7 @@ static bool read_from_jpeg(openslide_t *osr,
     // start decompressing
     _openslide_jpeg_decompress_init(dc, &env);
 
-    if (!jpeg_random_access_src(cinfo, f,
+    if (!jpeg_random_access_src(cinfo, fp,
                                 jpeg->start_in_file,
                                 jpeg->sof_position,
                                 jpeg->header_stop_position,
@@ -652,7 +652,7 @@ static bool read_from_jpeg(openslide_t *osr,
 
 OUT:
   _openslide_jpeg_decompress_destroy(dc);
-  fclose(f);
+  VSIFCloseL(fp);
   return success;
 }
 
@@ -997,7 +997,7 @@ static gpointer restart_marker_thread_func(gpointer d) {
 }
 
 // if !use_jpeg_dimensions, use *w and *h instead of setting them
-static bool validate_jpeg_header(FILE *f, bool use_jpeg_dimensions,
+static bool validate_jpeg_header(VSILFILE *fp, bool use_jpeg_dimensions,
                                  int32_t *w, int32_t *h,
                                  int32_t *tw, int32_t *th,
                                  int64_t *sof_position,
@@ -1011,8 +1011,8 @@ static bool validate_jpeg_header(FILE *f, bool use_jpeg_dimensions,
   }
 
   // find limits of JPEG header
-  int64_t header_start = ftello(f);
-  if (!find_bitstream_start(f, sof_position, header_stop_position, err)) {
+  int64_t header_start = VSIFTellL(fp);
+  if (!find_bitstream_start(fp, sof_position, header_stop_position, err)) {
     return false;
   }
 
@@ -1022,7 +1022,7 @@ static bool validate_jpeg_header(FILE *f, bool use_jpeg_dimensions,
 
   if (setjmp(env) == 0) {
     _openslide_jpeg_decompress_init(dc, &env);
-    if (!jpeg_random_access_src(cinfo, f,
+    if (!jpeg_random_access_src(cinfo, fp,
                                 header_start, *sof_position,
                                 *header_stop_position, -1, -1, err)) {
       goto DONE;
@@ -2234,8 +2234,8 @@ static bool hamamatsu_ndpi_open(openslide_t *osr, const char *filename,
   bool restart_marker_scan = false;
 
   // open file
-  FILE *f = _openslide_fopen(filename, "rb", err);
-  if (!f) {
+  VSILFILE *fp = tl->fp;
+  if (!fp) {
     goto FAIL;
   }
 
@@ -2304,11 +2304,11 @@ static bool hamamatsu_ndpi_open(openslide_t *osr, const char *filename,
       int32_t jp_h = height; // overwritten if dimensions_valid
       int32_t jp_tw, jp_th;
       int64_t sof_position, header_stop_position;
-      if (fseeko(f, start_in_file, SEEK_SET)) {
+      if (VSIFSeekL(fp, start_in_file, SEEK_SET)) {
         _openslide_io_error(err, "Couldn't seek to JPEG start");
         goto FAIL;
       }
-      if (!validate_jpeg_header(f, dimensions_valid,
+      if (!validate_jpeg_header(fp, dimensions_valid,
                                 &jp_w, &jp_h,
                                 &jp_tw, &jp_th,
                                 &sof_position, &header_stop_position,
@@ -2408,21 +2408,14 @@ static bool hamamatsu_ndpi_open(openslide_t *osr, const char *filename,
     goto FAIL;
   }
 
-  // init properties and set hash
-  if (!_openslide_tifflike_init_properties_and_hash(osr, tl, quickhash1,
-                                                    min_width_dir, 0,
-                                                    err)) {
-    goto FAIL;
-  }
+  // DON'T set quickhash property
+  _openslide_hash_disable(quickhash1);
+  
   ndpi_set_props(osr, tl, 0);
 
   success = true;
 
-FAIL:
-  // free
-  if (f) {
-    fclose(f);
-  }
+FAIL: ;
 
   // unwrap jpegs
   int32_t num_jpegs = jpeg_array->len;

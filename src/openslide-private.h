@@ -95,7 +95,15 @@ struct _openslide_ops {
   void (*destroy)(openslide_t *osr);
 };
 
-struct _openslide_tifflike;
+struct _openslide_tifflike
+{
+  char *filename;
+  bool big_endian;
+  bool ndpi;
+  GPtrArray *directories;
+  GMutex *value_lock;
+  VSILFILE *fp;
+};
 
 /* vendor detection and parsing */
 

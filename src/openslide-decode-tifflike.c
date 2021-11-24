@@ -45,16 +45,6 @@
 
 #define NDPI_TAG 65420
 
-
-struct _openslide_tifflike {
-  char *filename;
-  bool big_endian;
-  bool ndpi;
-  GPtrArray *directories;
-  GMutex *value_lock;
-  VSILFILE *fp;
-};
-
 struct tiff_directory {
   GHashTable *items;
   uint64_t offset;  // only for NDPI fixups
