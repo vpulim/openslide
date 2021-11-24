@@ -57,6 +57,15 @@
 
 #define NGR_TILE_HEIGHT 64
 
+struct _openslide_tifflike {
+  char *filename;
+  bool big_endian;
+   bool ndpi;
+   GPtrArray *directories;
+   GMutex value_lock;
+   VSILFILE *fp;
+ };
+
 // VMS/VMU
 static const char GROUP_VMS[] = "Virtual Microscope Specimen";
 static const char GROUP_VMU[] = "Uncompressed Virtual Microscope Specimen";
@@ -173,7 +182,7 @@ static GQuark _openslide_hamamatsu_error_quark(void) {
  * as a complete JPEG.  Originally based on jdatasrc.c from IJG libjpeg.
  */
 static bool jpeg_random_access_src(j_decompress_ptr cinfo,
-                                   FILE *infile,
+                                   VSILFILE *infile,
                                    int64_t header_start_position,
                                    int64_t sof_position,
                                    int64_t header_stop_position,
@@ -212,11 +221,11 @@ static bool jpeg_random_access_src(j_decompress_ptr cinfo,
 
   // read in the 2 parts
   //  g_debug("reading header from %"PRId64, header_start_position);
-  if (fseeko(infile, header_start_position, SEEK_SET)) {
+  if (VSIFSeekL(infile, header_start_position, SEEK_SET)) {
     _openslide_io_error(err, "Couldn't seek to header start");
     return false;
   }
-  if (!fread(buffer, header_length, 1, infile)) {
+  if (!VSIFReadL(buffer, header_length, 1, infile)) {
     g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
                 "Cannot read header in JPEG at %"PRId64,
                 header_start_position);
@@ -225,11 +234,11 @@ static bool jpeg_random_access_src(j_decompress_ptr cinfo,
 
   if (data_length) {
     //  g_debug("reading from %"PRId64, start_position);
-    if (fseeko(infile, start_position, SEEK_SET)) {
+    if (VSIFSeekL(infile, start_position, SEEK_SET)) {
       _openslide_io_error(err, "Couldn't seek to data start");
       return false;
     }
-    if (!fread(buffer + header_length, data_length, 1, infile)) {
+    if (!VSIFReadL(buffer + header_length, data_length, 1, infile)) {
       g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
                   "Cannot read data in JPEG at %"PRId64, start_position);
       return false;
@@ -300,7 +309,7 @@ static void jpeg_destroy_data(int32_t num_jpegs, struct jpeg **jpegs,
   g_free(levels);
 }
 
-static bool find_bitstream_start(FILE *f,
+static bool find_bitstream_start(VSILFILE *fp,
                                  int64_t *sof_position,
                                  int64_t *header_stop_position,
                                  GError **err) {
@@ -312,8 +321,8 @@ static bool find_bitstream_start(FILE *f,
 
   while (true) {
     // read marker
-    pos = ftello(f);
-    if (fread(buf, sizeof(buf), 1, f) != 1) {
+    pos = VSIFTellL(fp);
+    if (VSIFReadL(buf, sizeof(buf), 1, fp) != 1) {
       g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
                   "Couldn't read JPEG marker at %"PRId64, pos);
       return false;
@@ -339,7 +348,7 @@ static bool find_bitstream_start(FILE *f,
     }
 
     // read length
-    if (fread(buf, sizeof(buf), 1, f) != 1) {
+    if (VSIFReadL(buf, sizeof(buf), 1, fp) != 1) {
       g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
                   "Couldn't read JPEG marker length at %"PRId64, pos);
       return false;
@@ -348,7 +357,7 @@ static bool find_bitstream_start(FILE *f,
     len = GUINT16_FROM_BE(len);
 
     // seek
-    if (fseeko(f, pos + sizeof(buf) + len, SEEK_SET)) {
+    if (VSIFSeekL(fp, pos + sizeof(buf) + len, SEEK_SET)) {
       _openslide_io_error(err, "Couldn't seek to next marker");
       return false;
     }
@@ -356,7 +365,7 @@ static bool find_bitstream_start(FILE *f,
     // check for SOS
     if (marker_byte == 0xDA) {
       // found it; done
-      *header_stop_position = ftello(f);
+      *header_stop_position = VSIFTellL(fp);
       //g_debug("found bitstream start at %"PRId64, *header_stop_position);
       break;
     }
@@ -997,7 +1006,7 @@ static gpointer restart_marker_thread_func(gpointer d) {
 }
 
 // if !use_jpeg_dimensions, use *w and *h instead of setting them
-static bool validate_jpeg_header(FILE *f, bool use_jpeg_dimensions,
+static bool validate_jpeg_header(VSILFILE *fp, bool use_jpeg_dimensions,
                                  int32_t *w, int32_t *h,
                                  int32_t *tw, int32_t *th,
                                  int64_t *sof_position,
@@ -1011,8 +1020,8 @@ static bool validate_jpeg_header(FILE *f, bool use_jpeg_dimensions,
   }
 
   // find limits of JPEG header
-  int64_t header_start = ftello(f);
-  if (!find_bitstream_start(f, sof_position, header_stop_position, err)) {
+  int64_t header_start = VSIFTellL(fp);
+  if (!find_bitstream_start(fp, sof_position, header_stop_position, err)) {
     return false;
   }
 
@@ -1022,7 +1031,7 @@ static bool validate_jpeg_header(FILE *f, bool use_jpeg_dimensions,
 
   if (setjmp(env) == 0) {
     _openslide_jpeg_decompress_init(dc, &env);
-    if (!jpeg_random_access_src(cinfo, f,
+    if (!jpeg_random_access_src(cinfo, fp,
                                 header_start, *sof_position,
                                 *header_stop_position, -1, -1, err)) {
       goto DONE;
@@ -2233,21 +2242,12 @@ static bool hamamatsu_ndpi_open(openslide_t *osr, const char *filename,
   bool success = false;
   bool restart_marker_scan = false;
 
-  g_warning("NDPI OPEN: %s", filename);
-
   // open file
-#ifdef HAVE_GDAL
-  g_warning("NDPI BAFAFOPEN: %s", filename);
-  VSILFILE *f = VSIFOpenL( filename, "rb");
-  g_warning("NDPI BAFAFOPEN: %s", filename);
-  if (f == NULL) {
-    // _openslide_io_error(err, "Couldn't open %s", filename);
+  VSILFILE *fp = tl->fp;
+  if (fp == NULL) {
+    _openslide_io_error(err, "Couldn't open %s", filename);
   }
-#else  
-  VSILFILE *f = _openslide_fopen(filename, "rb", err);
-#endif
-  if (!f) {
-    g_warning("NDPI FAIL");
+  if (!fp) {
     goto FAIL;
   }
 
@@ -2316,11 +2316,11 @@ static bool hamamatsu_ndpi_open(openslide_t *osr, const char *filename,
       int32_t jp_h = height; // overwritten if dimensions_valid
       int32_t jp_tw, jp_th;
       int64_t sof_position, header_stop_position;
-      if (fseeko(f, start_in_file, SEEK_SET)) {
+      if (VSIFSeekL(fp, start_in_file, SEEK_SET)) {
         _openslide_io_error(err, "Couldn't seek to JPEG start");
         goto FAIL;
       }
-      if (!validate_jpeg_header(f, dimensions_valid,
+      if (!validate_jpeg_header(fp, dimensions_valid,
                                 &jp_w, &jp_h,
                                 &jp_tw, &jp_th,
                                 &sof_position, &header_stop_position,
@@ -2405,11 +2405,11 @@ static bool hamamatsu_ndpi_open(openslide_t *osr, const char *filename,
 
     } else if (lens == -1) {
       // macro image
-      if (!_openslide_jpeg_add_associated_image(osr, "macro",
-                                                filename, start_in_file,
-                                                err)) {
-        goto FAIL;
-      }
+      // if (!_openslide_jpeg_add_associated_image(osr, "macro",
+      //                                           filename, start_in_file,
+      //                                           err)) {
+      //   goto FAIL;
+      // }
     }
   }
 
@@ -2432,9 +2432,7 @@ static bool hamamatsu_ndpi_open(openslide_t *osr, const char *filename,
 
 FAIL:
   // free
-  if (f) {
-    fclose(f);
-  }
+  if (fp) { }
 
   // unwrap jpegs
   int32_t num_jpegs = jpeg_array->len;

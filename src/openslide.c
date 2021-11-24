@@ -169,13 +169,13 @@ static bool open_backend(openslide_t *osr,
     result = false;
   }
 
-  g_message("result OK");
 
   // if we have a hash and a false result, destroy
   if (quickhash1_OUT && !result) {
     _openslide_hash_destroy(*quickhash1_OUT);
   }
 
+  g_message("result reutrn: %d", result);
   return result;
 }
 
@@ -243,28 +243,24 @@ openslide_t *openslide_open(const char *filename) {
   g_assert(openslide_was_dynamically_loaded);
 
    // detect format
-  g_warning("detect format");
   struct _openslide_tifflike *tl;
   const struct _openslide_format *format = detect_format(filename, &tl);
   if (!format) {
-    g_warning("!format");
     // not a slide file
     return NULL;
   }
-  g_warning("format: %s %s", format->name, format->vendor);
+  g_message("Detected Format: %s %s", format->name, format->vendor);
 
   // alloc memory
   openslide_t *osr = create_osr();
 
   // open backend
   struct _openslide_hash *quickhash1 = NULL;
-  g_warning("open backend");
   bool success = open_backend(osr, format, filename, tl, &quickhash1,
                               &tmp_err);
   _openslide_tifflike_destroy(tl);
   if (!success) {
     // failed to read slide
-    g_warning("!success");
     _openslide_propagate_error(osr, tmp_err);
     return osr;
   }

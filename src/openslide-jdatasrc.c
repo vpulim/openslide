@@ -208,7 +208,7 @@ static void term_source (j_decompress_ptr cinfo G_GNUC_UNUSED)
  * for closing it after finishing decompression.
  */
 
-void _openslide_jpeg_stdio_src (j_decompress_ptr cinfo, FILE * infile)
+void _openslide_jpeg_stdio_src (j_decompress_ptr cinfo, VSILFILE * infile)
 {
   my_src_ptr src;
 
